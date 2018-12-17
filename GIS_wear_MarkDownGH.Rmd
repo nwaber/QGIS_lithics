@@ -1,0 +1,208 @@
+---
+title: "GIS Wear"
+author: "Nick Waber"
+date: "October 31, 2018"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## GIS Use Wear Quantification
+
+Brief summary of GIS use wear quantification data processing.
+
+### IMPORTANT:
+Environment data will not permit you to knit reports using the Knit button.  But chunks can be run individually.
+```{r, include=FALSE}
+library(ggplot2)
+library(plotly)
+library(psych)
+library(Gmisc)
+library(janitor)
+library(data.table)
+library(ggpubr)
+library(plyr)
+library(dplyr)
+library(reshape)
+library(reshape2)
+```
+
+
+```{r, include=FALSE}
+###################
+# Load wear data from Github
+###################
+library(RCurl)
+data_url <- getURL("https://raw.githubusercontent.com/nwaber/QGIS_lithics/master/MB_all_wear.csv")
+wear.all.df <- read.csv(text=data_url)
+
+#wear.all.df file is composed of all wear data from 10 microblades- originally 10 seperate files
+#sharpness data has been stripped
+
+```
+
+
+```{r, include=FALSE}
+#aggregate values and merge aggregates into single DF
+wear.agg.vol <- aggregate(volume ~ src + position, data = wear.all.df, FUN = "sum")
+wear.agg.vol.V <- aggregate(volume.V ~ src + position, data = wear.all.df, FUN = "sum")
+wear.agg.vol.D <- aggregate(volume.D ~ src + position, data = wear.all.df, FUN = "sum")
+wear.agg.idx.mn <- aggregate(index ~ src + position, data = wear.all.df, FUN = "mean")
+wear.agg.idx.mdn <- aggregate(index ~ src + position, data = wear.all.df, FUN = "median")
+wear.agg.idx.mx <- aggregate(index ~ src + position, data = wear.all.df, FUN = "max")
+wear.agg.idx.mn.V <- aggregate(index.V ~ src + position, data = wear.all.df, FUN = "mean")
+wear.agg.idx.mdn.V <- aggregate(index.V ~ src + position, data = wear.all.df, FUN = "median")
+wear.agg.idx.mx.V <- aggregate(index.V ~ src + position, data = wear.all.df, FUN = "max")
+wear.agg.idx.mn.D <- aggregate(index.D ~ src + position, data = wear.all.df, FUN = "mean")
+wear.agg.idx.mdn.D <- aggregate(index.D ~ src + position, data = wear.all.df, FUN = "median")
+wear.agg.idx.mx.D <- aggregate(index.D ~ src + position, data = wear.all.df, FUN = "max")
+#wear.agg.sharp <- aggregate(mean.sharp ~ src + position, data = wear.all.df, FUN = "mean")
+
+wear.agg <- merge(wear.agg.vol, wear.agg.vol.D, by=c("src","position"))
+wear.agg <- merge(wear.agg, wear.agg.vol.V, by=c("src","position"))
+wear.agg <- merge(wear.agg, wear.agg.idx.mn, by=c("src","position"))
+wear.agg <- merge(wear.agg, wear.agg.idx.mn.D, by=c("src","position"))
+wear.agg <- merge(wear.agg, wear.agg.idx.mn.V, by=c("src","position"))
+wear.agg <- merge(wear.agg, wear.agg.idx.mdn, by=c("src","position"))
+wear.agg <- merge(wear.agg, wear.agg.idx.mdn.D, by=c("src","position"))
+wear.agg <- merge(wear.agg, wear.agg.idx.mdn.V, by=c("src","position"))
+wear.agg <- merge(wear.agg, wear.agg.idx.mx, by=c("src","position"))
+wear.agg <- merge(wear.agg, wear.agg.idx.mx.D, by=c("src","position"))
+wear.agg <- merge(wear.agg, wear.agg.idx.mx.V, by=c("src","position"))
+wear.agg <- merge(wear.agg, wear.agg.sharp, by=c("src","position"))
+
+colnames(wear.agg) <- c("src","position","volume","volume D", "volume V", "index mn", "index D mn", "index V mn", "index mdn","index D mdn", "index V mdn","index max", "index D max", "index V max", "sharp")
+
+wear.agg$set <- ifelse(wear.agg$src %like% "-1",1,2)
+#distinguish between experimental sets 1 and 2
+wear.agg$MB <- substring(wear.agg$src,0,4)
+#add microblade labels
+
+```
+
+```{r, include=FALSE}
+#vol.sum is the total wear on each microblade in each set.
+#vol.sum is calculated by summing all of the wear volume, grouped by MB source
+#vol.pct is the wear volume of each individual MB section devided by the total wear of that microblade.
+Vsum <- rowsum(wear.agg$volume, group = wear.agg$src)
+Vsum <- setDT(as.data.frame(Vsum), keep.rownames = TRUE)[]
+colnames(Vsum) <- c("src","vol.sum")
+wear.agg <- merge(wear.agg, Vsum,by.x = "src", by.y = "src")
+wear.agg$vol.pct <- floor(((wear.agg$volume/wear.agg$vol.sum)*100 )*100)/100
+wear.agg$CSD <- wear.agg$set*500
+```
+
+
+##### Wear plots
+
+Using ggplot and ggarrange to display wear volume and wear percentage (index) barplots
+
+```{r, echo=FALSE}
+#Wear volume
+
+gg.wear.right.1 <- ggplot(data= subset( wear.agg , wear.agg$position %like% "right" & wear.agg$set==1), aes(x=position, y=volume))  +
+stat_summary(fun.y = "sum", geom = "bar", aes(fill=MB), position="dodge") +
+scale_fill_brewer(palette = "Paired") +
+labs(x="Microblade section", y="Volume of wear (mm^3)", title="Set 1", fill="Microblade ID")+
+theme(legend.position = "bottom")+ylim(c(0,3))  +coord_flip()
+
+gg.wear.left.1 <- ggplot(data= subset( wear.agg , wear.agg$position %like% "left" & wear.agg$set==1), aes(x=position, y=volume))  +
+stat_summary(fun.y = "sum", geom = "bar", aes(fill=MB), position="dodge") +
+scale_fill_brewer(palette = "Paired") +
+labs(x="Microblade section", y="Volume of wear (mm^3)",title="Set 1", fill="Microblade ID")+
+theme(legend.position = "bottom")+ylim(c(0,3))  +coord_flip()
+
+gg.wear.right.2 <- ggplot(data= subset( wear.agg , wear.agg$position %like% "right" & wear.agg$set==2), aes(x=position, y=volume))  +
+stat_summary(fun.y = "sum", geom = "bar", aes(fill=MB), position="dodge") +
+scale_fill_brewer(palette = "Paired") +
+labs(x="Microblade section", y="Volume of wear (mm^3)",title="Set 2", fill="Microblade ID")+
+theme(legend.position = "bottom")+ylim(c(0,3))  +coord_flip()
+
+gg.wear.left.2 <- ggplot(data= subset( wear.agg , wear.agg$position %like% "left" & wear.agg$set==2), aes(x=position, y=volume))  +
+stat_summary(fun.y = "sum", geom = "bar", aes(fill=MB), position="dodge") +
+scale_fill_brewer(palette = "Paired") +
+labs(x="Microblade section", y="Volume of wear (mm^3)",title="Set 2", fill="Microblade ID")+
+theme(legend.position = "bottom")+ylim(c(0,3))  +coord_flip()
+
+p1 <- ggarrange(gg.wear.left.1, gg.wear.right.1, gg.wear.left.2, gg.wear.right.2, nrow = 2, ncol = 2, common.legend = TRUE, legend = "bottom")
+annotate_figure(p1, top=text_grob("Wear volume by microblade section: sets 1 and 2", color = "black", size=14))
+
+
+```
+
+
+
+```{r, echo=FALSE}
+#Wear percent
+
+gg.wearPCT.right.1 <- ggplot(data= subset( wear.agg , wear.agg$position %like% "right" & wear.agg$set==1), aes(x=position, y=vol.pct))  +
+stat_summary(fun.y = "sum", geom = "bar", aes(fill=MB), position="dodge") +
+scale_fill_brewer(palette = "Paired") +
+labs(x="Microblade section", y="Percentage of total wear", title="Set 1", fill="Microblade ID")+
+theme(legend.position = "bottom")+ylim(c(0,100))  +coord_flip()
+
+gg.wearPCT.left.1 <- ggplot(data= subset( wear.agg , wear.agg$position %like% "left" & wear.agg$set==1), aes(x=position, y=vol.pct))  +
+stat_summary(fun.y = "sum", geom = "bar", aes(fill=MB), position="dodge") +
+scale_fill_brewer(palette = "Paired") +
+labs(x="Microblade section", y="Percentage of total wear",title="Set 1", fill="Microblade ID")+
+theme(legend.position = "bottom")+ylim(c(0,100))  +coord_flip()
+
+gg.wearPCT.right.2 <- ggplot(data= subset( wear.agg , wear.agg$position %like% "right" & wear.agg$set==2), aes(x=position, y=vol.pct))  +
+stat_summary(fun.y = "sum", geom = "bar", aes(fill=MB), position="dodge") +
+scale_fill_brewer(palette = "Paired") +
+labs(x="Microblade section", y="Percentage of total wear",title="Set 2", fill="Microblade ID")+
+theme(legend.position = "bottom")+ylim(c(0,100))  +coord_flip()
+
+gg.wearPCT.left.2 <- ggplot(data= subset( wear.agg , wear.agg$position %like% "left" & wear.agg$set==2), aes(x=position, y=vol.pct))  +
+stat_summary(fun.y = "sum", geom = "bar", aes(fill=MB), position="dodge") +
+scale_fill_brewer(palette = "Paired") +
+labs(x="Microblade section", y="Percentage of total wear",title="Set 2", fill="Microblade ID")+
+theme(legend.position = "bottom")+ylim(c(0,100))  +coord_flip()
+
+p2 <- ggarrange(gg.wearPCT.left.1, gg.wearPCT.right.1, gg.wearPCT.left.2, gg.wearPCT.right.2, nrow = 2, ncol = 2, common.legend = TRUE, legend = "bottom")
+annotate_figure(p2, top=text_grob("Sectional wear as a percentage of total blade wear volume: sets 1 and 2", color = "black", size=14))
+
+
+```
+
+```{r, echo=FALSE}
+
+p3 <- ggarrange(gg.wear.left.1, gg.wear.right.1, gg.wear.left.2, gg.wear.right.2, gg.wearPCT.left.1, gg.wearPCT.right.1, gg.wearPCT.left.2, gg.wearPCT.right.2, nrow = 4, ncol = 2, common.legend = TRUE, legend = "bottom")
+fig5 <- annotate_figure(p3, top=text_grob("Sectional wear as a percentage of total blade wear volume: sets 1 and 2", color = "black", size=14))
+
+fig5
+```
+
+
+####Wear progression
+Tracking wear progression over two experimental sets.
+```{r, echo=FALSE}
+#create a blade-wide data frame for sequential wear tracking 
+#create a dummy DF for set 0 (0cm CSD, 0mm^3 wear)
+wear.agg.dummy <- subset(wear.agg, wear.agg$set==1)
+wear.agg.dummy$set <- 0
+wear.agg.dummy$CSD <- 0
+wear.agg.dummy[,3:14] <- 0
+wear.agg.dummy$vol.sum <- 0
+wear.agg.dummy$vol.pct <- 0
+wear.agg.dummy$src <- paste(wear.agg.dummy$MB, wear.agg.dummy$set, sep="-")
+#merge the dummy data with the main data and aggregate it.
+wear.agg <- rbind(wear.agg, wear.agg.dummy)
+wear.agg.blade <- aggregate(volume ~ MB + set, data=wear.agg, FUN="sum")
+wear.agg.blade$CSD <- wear.agg.blade$set*500
+
+#plot the sequential data
+fig4_line <-ggplot(data=wear.agg.blade, aes(x=CSD, y=volume)) +geom_line(aes(color=MB),size=1) +labs(x="Cumulative stroke distance (CSD) cm", y="Volume (mm^3)", color="Microblade")
+
+#barplot alternative
+fig4_bar <- ggplot(data= subset(wear.agg, wear.agg$set > 0) , aes(x=MB, y=volume))  +
+stat_summary(fun.y = "sum", geom = "bar", aes(fill=as.factor(set)), position="dodge", size = 1.5) +
+scale_fill_manual(values = c("grey","black")) +
+labs(x="Microblade", y="Volume of wear (mm^3)", fill = "Experiment set") +
+theme(legend.position = "bottom")  +ylim(c(0,6))
+
+fig4_bar #used in paper
+fig4_line #not used
+```
